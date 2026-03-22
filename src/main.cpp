@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "Adafruit_GFX.h"
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+#include "LittleFS.h"
 
 /*
 Default Setup (modified output):
@@ -24,9 +25,86 @@ Using GPIO 16 for CLK_PIN
 #define PANEL_RES_Y 32     // Number of pixels tall of each INDIVIDUAL panel module.
 #define PANEL_CHAIN 1      // Total number of panels chained one to another
 
+void draw(int r, int g, int b);
+
 MatrixPanel_I2S_DMA * dma_display = nullptr;
 
-void drawText(int r, int g, int b)
+const int width = 64;
+const int height = 32;
+
+void setup() 
+{
+  // Module configuration
+  HUB75_I2S_CFG mxconfig(
+    PANEL_RES_X,   // module width
+    PANEL_RES_Y,   // module height
+    PANEL_CHAIN    // Chain length
+  );
+
+  if (!LittleFS.begin()) 
+  {
+    ESP_LOGI("ERR:", "LittleFS failed to begin!");
+    return;
+  }
+  else ESP_LOGI("INFO:", "LittleFS started successfully!");
+
+  //mxconfig.gpio.e = 18;
+  //mxconfig.clkphase = false;
+  //mxconfig.driver = HUB75_I2S_CFG::FM6126A;
+
+  // Display Setup
+  dma_display = new MatrixPanel_I2S_DMA(mxconfig);
+  dma_display->begin();
+  dma_display->setBrightness8(90); //0-255
+  dma_display->clearScreen();
+
+  for(int i = 0; i < 32; i++)
+  {
+    for(int j = 0; j < 64; j++)
+    {
+      dma_display->drawPixelRGB888(j,i, 255, 0, 0);
+      delay(1);
+    }
+  }
+  dma_display->clearScreen();
+}
+
+const int frameSize = width * height * 2;
+uint8_t buffer[frameSize];
+double x = 0;
+File file;
+void loop() {
+  // Start file read
+  file = LittleFS.open("/output.raw", "r");
+  if (!file) 
+  {
+      ESP_LOGI("ERR:", "Could not find output.raw!");
+      return;
+  }
+  else ESP_LOGI("INFO:", "Found output.raw!");
+
+  while(file.available())
+  {
+    file.read(buffer, frameSize);
+  
+    dma_display->drawRGBBitmap(0,0, (uint16_t *)buffer, 64, 32);
+    
+    delay(50);
+  }
+  /*
+  while(1)
+  {
+    double r = floor(-127.5*cos(PI*x/180)+127.5);
+    double g = floor(-127.5*cos(PI*x/270)+127.5);
+    double b = floor(-127.5*cos(PI*x/90)+127.5);
+    x+=1;
+    draw(r, g, b);
+  } 
+  */
+  file.close();
+}
+
+void draw(int r, int g, int b)
 {
   
   // draw text with a rotating colour
@@ -40,39 +118,6 @@ void drawText(int r, int g, int b)
     dma_display->setTextColor(dma_display->color565(r,g,b));
     dma_display->print(str[w]);
   }
-}
 
-void setup() 
-{
-  // Module configuration
-  HUB75_I2S_CFG mxconfig(
-    PANEL_RES_X,   // module width
-    PANEL_RES_Y,   // module height
-    PANEL_CHAIN    // Chain length
-  );
-
-  //mxconfig.gpio.e = 18;
-  //mxconfig.clkphase = false;
-  //mxconfig.driver = HUB75_I2S_CFG::FM6126A;
-
-  // Display Setup
-  dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-  dma_display->begin();
-  dma_display->setBrightness8(90); //0-255
-  dma_display->clearScreen();
-}
-
-double x = 0;
-void loop() {
-
-  // operatorname{floor}\left(-127.5\cos\left(x\right)\ +127.5\right)  
-  double r = floor(-127.5*cos(PI*x/180)+127.5);
-  double g = floor(-127.5*cos(PI*x/270)+127.5);
-  double b = floor(-127.5*cos(PI*x/90)+127.5);
-  //ESP_LOGI("INFO", "Y = %f, X= %f", r, x);
-  x+=1;
-  drawText(r, g, b);
-
-
-  delay(10); 
+  //dma_display->drawRGBBitmap();
 }
